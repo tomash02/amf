@@ -1,0 +1,14 @@
+FROM golang:1.17.13-bullseye AS builder
+
+WORKDIR /src
+COPY . .
+
+RUN cd cmd && \
+    CGO_ENABLED=0 go build \
+    -ldflags "-X github.com/free5gc/util/version.VERSION=v3.3.0" \
+    -o /out/amf main.go
+
+FROM towards5gs/free5gc-amf:latest
+
+COPY --from=builder /out/amf /free5gc/amf/amf
+RUN chmod +x /free5gc/amf/amf

@@ -45,6 +45,16 @@ func HandleULNASTransport(ue *context.AmfUe, anType models.AccessType,
 ) error {
 	ue.GmmLog.Infoln("Handle UL NAS Transport")
 
+	if ulNasTransport.AdditionalInformation != nil {
+		value := ulNasTransport.AdditionalInformation.GetAdditionalInformationValue()
+		ue.GmmLog.Infof("UL NAS AdditionalInformation len=%d value=%x ascii=%q",
+			ulNasTransport.AdditionalInformation.GetLen(),
+			value,
+			string(value))
+	} else {
+		ue.GmmLog.Infoln("UL NAS AdditionalInformation: <nil>")
+	}
+
 	if ue.MacFailed {
 		return fmt.Errorf("NAS message integrity check failed")
 	}
