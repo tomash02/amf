@@ -5,7 +5,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net"
 	"net/http"
+	"os"
 	"reflect"
 	"strconv"
 	"strings"
@@ -45,18 +47,21 @@ func HandleULNASTransport(ue *context.AmfUe, anType models.AccessType,
 ) error {
 	ue.GmmLog.Infoln("Handle UL NAS Transport")
 
-	if ulNasTransport.AdditionalInformation != nil {
-		value := ulNasTransport.AdditionalInformation.GetAdditionalInformationValue()
-		ue.GmmLog.Infof("UL NAS AdditionalInformation len=%d value=%x ascii=%q",
-			ulNasTransport.AdditionalInformation.GetLen(),
-			value,
-			string(value))
-	} else {
-		ue.GmmLog.Infoln("UL NAS AdditionalInformation: <nil>")
-	}
-
 	if ue.MacFailed {
 		return fmt.Errorf("NAS message integrity check failed")
+	}
+
+	if ulNasTransport.AdditionalInformation != nil {
+		raw := ulNasTransport.AdditionalInformation.GetAdditionalInformationValue()
+
+		ue.GmmLog.Infof("UL NAS AdditionalInformation len=%d value=%x ascii=%q",
+			ulNasTransport.AdditionalInformation.GetLen(),
+			raw,
+			string(raw))
+
+		forwardAdditionalInformationToTLVSink(ue, raw)
+	} else {
+		ue.GmmLog.Infoln("UL NAS AdditionalInformation: <nil>")
 	}
 
 	switch ulNasTransport.GetPayloadContainerType() {
@@ -2403,4 +2408,33 @@ func HandleStatus5GMM(ue *context.AmfUe, anType models.AccessType, status5GMM *n
 	cause := status5GMM.Cause5GMM.GetCauseValue()
 	ue.GmmLog.Errorf("Error condition [Cause Value: %s]", nasMessage.Cause5GMMToString(cause))
 	return nil
+}
+func forwardAdditionalInformationToTLVSink(ue *context.AmfUe, raw []byte) {
+	sinkAddr := os.Getenv("TLV_SINK_ADDR")
+	if sinkAddr == "" {
+		sinkAddr = "tlv-sink-udp.free5gc.svc.cluster.local:9100"
+	}
+
+	payload := fmt.Sprintf(
+		"event=ul_nas_additional_information len=%d hex=%x ascii=%q",
+		len(raw),
+		raw,
+		string(raw),
+	)
+
+	conn, err := net.DialTimeout("udp", sinkAddr, 2*time.Second)
+	if err != nil {
+		ue.GmmLog.Warnf("Failed to connect to TLV sink addr=%s: %v", sinkAddr, err)
+		return
+	}
+	defer conn.Close()
+
+	_ = conn.SetDeadline(time.Now().Add(2 * time.Second))
+
+	if _, err := conn.Write([]byte(payload)); err != nil {
+		ue.GmmLog.Warnf("Failed to send AdditionalInformation to TLV sink addr=%s: %v", sinkAddr, err)
+		return
+	}
+
+	ue.GmmLog.Infof("Forwarded UL NAS AdditionalInformation to TLV sink addr=%s", sinkAddr)
 }
