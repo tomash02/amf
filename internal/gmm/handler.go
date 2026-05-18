@@ -42,6 +42,9 @@ import (
 
 const psiArraySize = 16
 
+const payloadContainerTypeCIoTUserData uint8 = 0x08
+const maxCIoTUserDataPayloadBytes = 1024
+
 func HandleULNASTransport(ue *context.AmfUe, anType models.AccessType,
 	ulNasTransport *nasMessage.ULNASTransport,
 ) error {
@@ -89,9 +92,54 @@ func HandleULNASTransport(ue *context.AmfUe, anType models.AccessType,
 			return err
 		}
 		ue.GmmLog.Debugf("UpuMac[%s] in UPU ACK NAS Msg", upuMac)
+	case payloadContainerTypeCIoTUserData:
+		return handleCIoTUserDataContainer(ue, anType, ulNasTransport)
 	case nasMessage.PayloadContainerTypeMultiplePayload:
 		return fmt.Errorf("PayloadContainerTypeMultiplePayload has not been implemented yet in UL NAS TRANSPORT")
 	}
+	return nil
+}
+
+func handleCIoTUserDataContainer(ue *context.AmfUe, anType models.AccessType,
+	ulNasTransport *nasMessage.ULNASTransport,
+) error {
+	ue.GmmLog.Infoln("Handle CIoT User Data Container over UL NAS Transport")
+
+	if ulNasTransport.PduSessionID2Value == nil {
+		return fmt.Errorf("CIoT user data container: PDU Session ID is nil")
+	}
+
+	pduSessionID := int32(ulNasTransport.PduSessionID2Value.GetPduSessionID2Value())
+	if pduSessionID <= 0 || pduSessionID >= int32(psiArraySize) {
+		return fmt.Errorf("CIoT user data container: PDU Session ID is invalid [%d]", pduSessionID)
+	}
+
+	payload := ulNasTransport.PayloadContainer.GetPayloadContainerContents()
+	if len(payload) == 0 {
+		return fmt.Errorf("CIoT user data container: payload is empty")
+	}
+
+	if len(payload) > maxCIoTUserDataPayloadBytes {
+		return fmt.Errorf("CIoT user data container: payload too large [%d > %d]",
+			len(payload), maxCIoTUserDataPayloadBytes)
+	}
+
+	_, smContextExist := ue.SmContextFindByPDUSessionID(pduSessionID)
+	if !smContextExist {
+		ue.GmmLog.Warnf("CIoT user data container received without SM context for PDU Session ID[%d]",
+			pduSessionID)
+	}
+
+	ue.GmmLog.Infof(
+		"CIOT_USER_DATA_CONTAINER supi[%s] anType[%s] pduSessionId[%d] bytes[%d] hex[%s] ascii[%q]",
+		ue.Supi,
+		anType,
+		pduSessionID,
+		len(payload),
+		hex.EncodeToString(payload),
+		string(payload),
+	)
+
 	return nil
 }
 
