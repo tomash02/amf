@@ -43,7 +43,7 @@ import (
 const psiArraySize = 16
 
 const payloadContainerTypeCIoTUserData uint8 = 0x08
-const maxCIoTUserDataPayloadBytes = 1024
+const maxCIoTUserDataPayloadBytes = 64 * 1024
 
 func HandleULNASTransport(ue *context.AmfUe, anType models.AccessType,
 	ulNasTransport *nasMessage.ULNASTransport,
@@ -129,15 +129,20 @@ func handleCIoTUserDataContainer(ue *context.AmfUe, anType models.AccessType,
 		ue.GmmLog.Warnf("CIoT user data container received without SM context for PDU Session ID[%d]",
 			pduSessionID)
 	}
+	hash := sha256.Sum256(payload)
 
+	previewLen := len(payload)
+	if previewLen > 256 {
+		previewLen = 256
+	}
 	ue.GmmLog.Infof(
-		"CIOT_USER_DATA_CONTAINER supi[%s] anType[%s] pduSessionId[%d] bytes[%d] hex[%s] ascii[%q]",
+		"CIOT_USER_DATA_CONTAINER supi[%s] anType[%s] pduSessionId[%d] bytes[%d] sha256[%x] preview[%q]",
 		ue.Supi,
 		anType,
 		pduSessionID,
 		len(payload),
-		hex.EncodeToString(payload),
-		string(payload),
+		hash,
+		string(payload[:previewLen]),
 	)
 
 	return nil

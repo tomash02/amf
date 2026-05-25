@@ -1,0 +1,4 @@
+FROM tcedzyns/free5gc-amf-tlv:ai-forward-test
+COPY amf-ciot /free5gc/amf/amf
+RUN chmod +x /free5gc/amf/amf
+WORKDIR /free5gc/amf
